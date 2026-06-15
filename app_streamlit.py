@@ -6,9 +6,14 @@ Run: streamlit run app_streamlit.py
 """
 
 import os
-import anthropic
 import streamlit as st
 from datetime import datetime
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
+
+# Load environment variables
+load_dotenv()
 
 # ── Page config ───────────────────────────────────
 st.set_page_config(
@@ -112,10 +117,10 @@ with st.sidebar:
     st.markdown("### ⚙️ Konfigurasi")
 
     api_key = st.text_input(
-        "Anthropic API Key",
+        "Gemini API Key",
         type="password",
-        value=os.environ.get("ANTHROPIC_API_KEY", ""),
-        placeholder="sk-ant-..."
+        value=os.environ.get("GEMINI_API_KEY", ""),
+        placeholder="AIzaSy..."
     )
 
     st.divider()
@@ -158,7 +163,7 @@ with st.sidebar:
 
     st.markdown("""
     <div style="font-size:11px; color:#adb5bd; margin-top:12px; text-align:center;">
-      Model: claude-sonnet-4-6<br>
+      Model: gemini-2.5-flash<br>
       HistoTech Tutor v1.0
     </div>""", unsafe_allow_html=True)
 
@@ -248,20 +253,27 @@ if user_input:
           {user_input}
         </div>""", unsafe_allow_html=True)
 
-        # Call API with streaming
-        client = anthropic.Anthropic(api_key=api_key)
+        # Call API
+        client = genai.Client(api_key=api_key)
+        contents = []
+        for msg in st.session_state.messages:
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append({
+                "role": role,
+                "parts": [{"text": msg["content"]}]
+            })
+
         with st.spinner("HistoTech Tutor sedang berpikir..."):
             try:
-                response = client.messages.create(
-                    model="claude-sonnet-4-6",
-                    max_tokens=1000,
-                    system=SYSTEM_PROMPTS[st.session_state.domain],
-                    messages=[
-                        {"role": m["role"], "content": m["content"]}
-                        for m in st.session_state.messages
-                    ]
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPTS[st.session_state.domain],
+                        max_output_tokens=1000,
+                    )
                 )
-                reply = response.content[0].text
+                reply = response.text
                 st.session_state.messages.append({"role": "assistant", "content": reply})
 
                 formatted = reply.replace("\n", "<br>")
@@ -271,9 +283,10 @@ if user_input:
                   {formatted}
                 </div>""", unsafe_allow_html=True)
 
-            except anthropic.AuthenticationError:
-                st.error("✗ API Key tidak valid!")
             except Exception as e:
-                st.error(f"✗ Error: {e}")
+                if "API_KEY_INVALID" in str(e) or "invalid" in str(e).lower() or "api key" in str(e).lower():
+                    st.error("✗ API Key tidak valid!")
+                else:
+                    st.error(f"✗ Error: {e}")
 
         st.rerun()

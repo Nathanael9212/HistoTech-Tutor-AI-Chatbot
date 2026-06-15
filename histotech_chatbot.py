@@ -5,7 +5,7 @@
 ╚══════════════════════════════════════════════════════╝
 
 Use Case    : Education Bot (Sejarah, Teknologi, Sains, Cyber)
-Model       : claude-sonnet-4-6
+Model       : claude-3-5-sonnet-latest
 Language    : Bahasa Indonesia
 Author      : [Nama Mahasiswa]
 """
@@ -14,8 +14,13 @@ import os
 import sys
 import time
 import threading
-import anthropic
 from datetime import datetime
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
+
+# Load environment variables
+load_dotenv()
 
 
 # ─────────────────────────────────────────────
@@ -114,7 +119,7 @@ DOMAIN_INFO = {
 # ─────────────────────────────────────────────
 class HistoTechTutor:
     def __init__(self, api_key: str):
-        self.client        = anthropic.Anthropic(api_key=api_key)
+        self.client        = genai.Client(api_key=api_key)
         self.domain        = "all"
         self.history       = []          # multi-turn memory
         self.session_start = datetime.now()
@@ -152,54 +157,67 @@ class HistoTechTutor:
         anim_thread = threading.Thread(target=self._typing_anim, args=(stop_event,))
         anim_thread.start()
 
+        # Format history for Gemini
+        contents = []
+        for msg in self.history:
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append({
+                "role": role,
+                "parts": [{"text": msg["content"]}]
+            })
+
         full_response = ""
         try:
-            with self.client.messages.stream(
-                model="claude-sonnet-4-6",
-                max_tokens=1000,
-                system=SYSTEM_PROMPTS[self.domain],
-                messages=self.history
-            ) as stream:
-                stop_event.set()
-                anim_thread.join()
+            response = self.client.models.generate_content_stream(
+                model="gemini-2.5-flash",
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPTS[self.domain],
+                    max_output_tokens=1000,
+                )
+            )
+            stop_event.set()
+            anim_thread.join()
 
-                # Print bot header
-                icon, label, color = DOMAIN_INFO[self.domain]
-                print(f"\n  {C.BOLD}{color}┌─ HistoTech Tutor [{label}]{C.RESET}")
-                print(f"  {color}│{C.RESET}")
-                sys.stdout.write(f"  {color}│{C.RESET}  ")
+            # Print bot header
+            icon, label, color = DOMAIN_INFO[self.domain]
+            print(f"\n  {C.BOLD}{color}┌─ HistoTech Tutor [{label}]{C.RESET}")
+            print(f"  {color}│{C.RESET}")
+            sys.stdout.write(f"  {color}│{C.RESET}  ")
 
-                # Stream tokens live
-                col = 0
-                for text in stream.text_stream:
-                    full_response += text
-                    # Word-wrap at ~72 chars
-                    for ch in text:
-                        if ch == "\n":
+            # Stream tokens live
+            col = 0
+            for chunk in response:
+                text = chunk.text
+                if not text:
+                    continue
+                full_response += text
+                # Word-wrap at ~72 chars
+                for ch in text:
+                    if ch == "\n":
+                        print()
+                        sys.stdout.write(f"  {color}│{C.RESET}  ")
+                        col = 0
+                    else:
+                        sys.stdout.write(ch)
+                        col += 1
+                        if col >= 72 and ch == " ":
                             print()
                             sys.stdout.write(f"  {color}│{C.RESET}  ")
                             col = 0
-                        else:
-                            sys.stdout.write(ch)
-                            col += 1
-                            if col >= 72 and ch == " ":
-                                print()
-                                sys.stdout.write(f"  {color}│{C.RESET}  ")
-                                col = 0
-                    sys.stdout.flush()
+                sys.stdout.flush()
 
-                print(f"\n  {color}└{'─'*40}{C.RESET}\n")
+            print(f"\n  {color}└{'─'*40}{C.RESET}\n")
 
-        except anthropic.AuthenticationError:
-            stop_event.set()
-            anim_thread.join()
-            print(f"\n  {C.RED}✗ API Key tidak valid. Periksa konfigurasi Anda.{C.RESET}\n")
-            full_response = "[AUTH_ERROR]"
         except Exception as e:
             stop_event.set()
             anim_thread.join()
-            print(f"\n  {C.RED}✗ Error: {e}{C.RESET}\n")
-            full_response = "[ERROR]"
+            if "API_KEY_INVALID" in str(e) or "invalid" in str(e).lower() or "api key" in str(e).lower():
+                print(f"\n  {C.RED}✗ API Key tidak valid. Periksa konfigurasi Anda.{C.RESET}\n")
+                full_response = "[AUTH_ERROR]"
+            else:
+                print(f"\n  {C.RED}✗ Error: {e}{C.RESET}\n")
+                full_response = "[ERROR]"
 
         if full_response and full_response not in ("[AUTH_ERROR]", "[ERROR]"):
             self.history.append({"role": "assistant", "content": full_response})
@@ -265,7 +283,7 @@ def print_status(bot: HistoTechTutor):
     print(f"""
   {C.BOLD}─── Status Sesi ───────────────────────────────────{C.RESET}
   Domain aktif  : {color}{icon} {label}{C.RESET}
-  Model         : {C.CYAN}claude-sonnet-4-6{C.RESET}
+  Model         : {C.CYAN}claude-3-5-sonnet-latest{C.RESET}
   Pesan terkirim: {C.BOLD}{bot.msg_count}{C.RESET}
   Durasi sesi   : {C.BOLD}{mins}m {secs}s{C.RESET}
   Memory (turns): {C.BOLD}{len(bot.history)}{C.RESET}
@@ -278,12 +296,12 @@ def print_status(bot: HistoTechTutor):
 # ─────────────────────────────────────────────
 def main():
     # ── Get API key ──────────────────────────
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key:
         clear_screen()
         print_header()
         print(f"  {C.YELLOW}⚠  API Key tidak ditemukan di environment variable.{C.RESET}")
-        print(f"  {C.GRAY}Set dengan: export ANTHROPIC_API_KEY='your-key'{C.RESET}\n")
+        print(f"  {C.GRAY}Set dengan: export GEMINI_API_KEY='your-key'{C.RESET}\n")
         api_key = input(f"  {C.BOLD}Masukkan API Key kamu: {C.RESET}").strip()
         if not api_key:
             print(f"\n  {C.RED}API Key diperlukan. Keluar.{C.RESET}\n")
