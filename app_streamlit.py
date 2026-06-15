@@ -15,6 +15,64 @@ from google.genai import types
 # Load environment variables
 load_dotenv()
 
+def markdown_to_html(text):
+    import re
+    # Escape HTML tags
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    
+    # Headers
+    text = re.sub(r'^###[ \t]+(.*?)$', r'<h5 style="margin: 8px 0 4px 0; font-size: 1.1em;">\1</h5>', text, flags=re.MULTILINE)
+    text = re.sub(r'^##[ \t]+(.*?)$', r'<h4 style="margin: 10px 0 6px 0; font-size: 1.2em;">\1</h4>', text, flags=re.MULTILINE)
+    text = re.sub(r'^#[ \t]+(.*?)$', r'<h3 style="margin: 12px 0 8px 0; font-size: 1.3em;">\1</h3>', text, flags=re.MULTILINE)
+    
+    # Bold
+    text = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', text)
+    text = re.sub(r'__(.*?)__', r'<strong>\1</strong>', text)
+    
+    # Italic
+    text = re.sub(r'\*(.*?)\*', r'<em>\1</em>', text)
+    text = re.sub(r'_(.*?)_', r'<em>\1</em>', text)
+    
+    # Code block
+    text = re.sub(
+        r'```(?:[a-zA-Z0-9_-]+)?\n(.*?)\n```', 
+        r'<pre style="background: #eef1f6; padding: 10px; border-radius: 6px; overflow-x: auto; font-family: monospace; font-size: 0.9em; margin: 8px 0; border: 1px solid #ddd; color: #212529;"><code>\1</code></pre>', 
+        text, 
+        flags=re.DOTALL
+    )
+    
+    # Inline code
+    text = re.sub(
+        r'`(.*?)`', 
+        r'<code style="background: #eef1f6; padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 0.9em; border: 1px solid #ddd; color: #212529;">\1</code>', 
+        text
+    )
+    
+    # Lists
+    lines = text.split('\n')
+    in_list = False
+    new_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('- ') or stripped.startswith('* '):
+            if not in_list:
+                new_lines.append('<ul style="margin: 6px 0; padding-left: 20px;">')
+                in_list = True
+            new_lines.append(f'<li style="margin-bottom: 4px;">{stripped[2:]}</li>')
+        else:
+            if in_list:
+                new_lines.append('</ul>')
+                in_list = False
+            new_lines.append(line)
+    if in_list:
+        new_lines.append('</ul>')
+    text = '\n'.join(new_lines)
+    
+    # Newlines
+    text = text.replace("\n", "<br>")
+    return text
+
+
 # ── Page config ───────────────────────────────────
 st.set_page_config(
     page_title="HistoTech Tutor",
@@ -212,13 +270,14 @@ if not st.session_state.messages:
 # ── Render chat history ───────────────────────────
 for msg in st.session_state.messages:
     if msg["role"] == "user":
+        content = markdown_to_html(msg["content"])
         st.markdown(f"""
         <div class="user-bubble">
           <div class="msg-label user-label">Kamu</div>
-          {msg["content"]}
+          {content}
         </div>""", unsafe_allow_html=True)
     else:
-        content = msg["content"].replace("\n", "<br>")
+        content = markdown_to_html(msg["content"])
         st.markdown(f"""
         <div class="bot-bubble">
           <div class="msg-label bot-label">HistoTech Tutor</div>
@@ -247,10 +306,11 @@ if user_input:
         st.session_state.msg_count += 1
 
         # Render user bubble immediately
+        user_formatted = markdown_to_html(user_input)
         st.markdown(f"""
         <div class="user-bubble">
           <div class="msg-label user-label">Kamu</div>
-          {user_input}
+          {user_formatted}
         </div>""", unsafe_allow_html=True)
 
         # Call API
@@ -276,7 +336,7 @@ if user_input:
                 reply = response.text
                 st.session_state.messages.append({"role": "assistant", "content": reply})
 
-                formatted = reply.replace("\n", "<br>")
+                formatted = markdown_to_html(reply)
                 st.markdown(f"""
                 <div class="bot-bubble">
                   <div class="msg-label bot-label">HistoTech Tutor · {st.session_state.domain}</div>
