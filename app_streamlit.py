@@ -12,8 +12,8 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-# Load environment variables
-load_dotenv()
+# Load environment variables (reload on rerun to capture .env changes)
+load_dotenv(override=True)
 
 def markdown_to_html(text):
     import re
