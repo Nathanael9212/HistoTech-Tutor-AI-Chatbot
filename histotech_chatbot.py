@@ -212,6 +212,9 @@ class HistoTechTutor:
         except Exception as e:
             stop_event.set()
             anim_thread.join()
+            if self.history and self.history[-1]["role"] == "user":
+                self.history.pop()
+                self.msg_count -= 1
             if "API_KEY_INVALID" in str(e) or "invalid" in str(e).lower() or "api key" in str(e).lower():
                 print(f"\n  {C.RED}✗ API Key tidak valid. Periksa konfigurasi Anda.{C.RESET}\n")
                 full_response = "[AUTH_ERROR]"

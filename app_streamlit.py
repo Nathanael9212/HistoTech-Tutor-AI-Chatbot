@@ -342,11 +342,13 @@ if user_input:
                   <div class="msg-label bot-label">HistoTech Tutor · {st.session_state.domain}</div>
                   {formatted}
                 </div>""", unsafe_allow_html=True)
+                st.rerun()
 
             except Exception as e:
+                if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+                    st.session_state.messages.pop()
+                    st.session_state.msg_count -= 1
                 if "API_KEY_INVALID" in str(e) or "invalid" in str(e).lower() or "api key" in str(e).lower():
-                    st.error("✗ API Key tidak valid!")
+                    st.error("✗ API Key tidak valid! Pastikan GEMINI_API_KEY di .env sudah benar.")
                 else:
                     st.error(f"✗ Error: {e}")
-
-        st.rerun()
