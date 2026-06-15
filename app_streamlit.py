@@ -137,8 +137,9 @@ st.markdown("""
     border-radius: 8px;
     background: #f8f9fa;
     border: 1px solid #e9ecef;
+    color: #212529; /* Force dark text color inside the stat card */
   }
-  .stat-val { font-size: 22px; font-weight: 700; }
+  .stat-val { font-size: 22px; font-weight: 700; color: #1a1a2e; }
   .stat-lbl { font-size: 11px; color: #6c757d; }
 </style>
 """, unsafe_allow_html=True)
@@ -171,17 +172,9 @@ if "msg_count"   not in st.session_state: st.session_state.msg_count   = 0
 if "session_start" not in st.session_state: st.session_state.session_start = datetime.now()
 
 # ── Sidebar ───────────────────────────────────────
+api_key = os.environ.get("GEMINI_API_KEY", "")
+
 with st.sidebar:
-    st.markdown("### ⚙️ Konfigurasi")
-
-    api_key = st.text_input(
-        "Gemini API Key",
-        type="password",
-        value=os.environ.get("GEMINI_API_KEY", ""),
-        placeholder="AIzaSy..."
-    )
-
-    st.divider()
 
     st.markdown("### 🎯 Domain Topik")
     domain = st.radio(
@@ -221,7 +214,7 @@ with st.sidebar:
 
     st.markdown("""
     <div style="font-size:11px; color:#adb5bd; margin-top:12px; text-align:center;">
-      Model: gemini-2.5-flash<br>
+      Model: gemini-3.5-flash<br>
       HistoTech Tutor v1.0
     </div>""", unsafe_allow_html=True)
 
@@ -299,8 +292,8 @@ if typed:
 
 # ── Process and respond ───────────────────────────
 if user_input:
-    if not api_key:
-        st.error("⚠️ Masukkan API Key di sidebar terlebih dahulu!")
+    if not api_key or api_key == "your-gemini-api-key-here":
+        st.error("⚠️ API Key tidak ditemukan! Harap masukkan GEMINI_API_KEY di file .env Anda.")
     else:
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.session_state.msg_count += 1
@@ -325,41 +318,80 @@ if user_input:
 
         with st.spinner("HistoTech Tutor sedang berpikir..."):
             try:
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_PROMPTS[st.session_state.domain],
-                        max_output_tokens=1000,
-                        safety_settings=[
-                            types.SafetySetting(
-                                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                            ),
-                            types.SafetySetting(
-                                category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                            ),
-                            types.SafetySetting(
-                                category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                            ),
-                            types.SafetySetting(
-                                category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                            ),
-                        ]
+                try:
+                    response = client.models.generate_content_stream(
+                        model="gemini-3.5-flash",
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            system_instruction=SYSTEM_PROMPTS[st.session_state.domain],
+                            max_output_tokens=1000,
+                            safety_settings=[
+                                types.SafetySetting(
+                                    category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                                    threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                                ),
+                                types.SafetySetting(
+                                    category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                                    threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                                ),
+                                types.SafetySetting(
+                                    category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                                    threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                                ),
+                                types.SafetySetting(
+                                    category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                                    threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                                ),
+                            ]
+                        )
                     )
-                )
-                reply = response.text
-                st.session_state.messages.append({"role": "assistant", "content": reply})
-
-                formatted = markdown_to_html(reply)
-                st.markdown(f"""
-                <div class="bot-bubble">
-                  <div class="msg-label bot-label">HistoTech Tutor · {st.session_state.domain}</div>
-                  {formatted}
-                </div>""", unsafe_allow_html=True)
+                except Exception as primary_error:
+                    # Fallback to gemini-2.5-flash if 3.5 is overloaded/unavailable
+                    if "503" in str(primary_error) or "unavailable" in str(primary_error).lower() or "limit" in str(primary_error).lower():
+                        response = client.models.generate_content_stream(
+                            model="gemini-2.5-flash",
+                            contents=contents,
+                            config=types.GenerateContentConfig(
+                                system_instruction=SYSTEM_PROMPTS[st.session_state.domain],
+                                max_output_tokens=1000,
+                                safety_settings=[
+                                    types.SafetySetting(
+                                        category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                                        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                                    ),
+                                    types.SafetySetting(
+                                        category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                                        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                                    ),
+                                    types.SafetySetting(
+                                        category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                                        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                                    ),
+                                    types.SafetySetting(
+                                        category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                                        threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                                    ),
+                                ]
+                            )
+                        )
+                    else:
+                        raise primary_error
+                
+                # Setup streaming placeholder
+                response_placeholder = st.empty()
+                full_response = ""
+                
+                for chunk in response:
+                    if chunk.text:
+                        full_response += chunk.text
+                        formatted = markdown_to_html(full_response)
+                        response_placeholder.markdown(f"""
+                        <div class="bot-bubble">
+                          <div class="msg-label bot-label">HistoTech Tutor · {st.session_state.domain}</div>
+                          {formatted}
+                        </div>""", unsafe_allow_html=True)
+                
+                st.session_state.messages.append({"role": "assistant", "content": full_response})
                 st.rerun()
 
             except Exception as e:

@@ -168,32 +168,63 @@ class HistoTechTutor:
 
         full_response = ""
         try:
-            response = self.client.models.generate_content_stream(
-                model="gemini-2.5-flash",
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPTS[self.domain],
-                    max_output_tokens=1000,
-                    safety_settings=[
-                        types.SafetySetting(
-                            category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                            threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                        ),
-                        types.SafetySetting(
-                            category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-                            threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                        ),
-                        types.SafetySetting(
-                            category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                            threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                        ),
-                        types.SafetySetting(
-                            category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                            threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                        ),
-                    ]
+            try:
+                response = self.client.models.generate_content_stream(
+                    model="gemini-3.5-flash",
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPTS[self.domain],
+                        max_output_tokens=1000,
+                        safety_settings=[
+                            types.SafetySetting(
+                                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                            ),
+                            types.SafetySetting(
+                                category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                            ),
+                            types.SafetySetting(
+                                category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                            ),
+                            types.SafetySetting(
+                                category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                            ),
+                        ]
+                    )
                 )
-            )
+            except Exception as primary_error:
+                if "503" in str(primary_error) or "unavailable" in str(primary_error).lower() or "limit" in str(primary_error).lower():
+                    response = self.client.models.generate_content_stream(
+                        model="gemini-2.5-flash",
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            system_instruction=SYSTEM_PROMPTS[self.domain],
+                            max_output_tokens=1000,
+                            safety_settings=[
+                                types.SafetySetting(
+                                    category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                                    threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                                ),
+                                types.SafetySetting(
+                                    category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                                    threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                                ),
+                                types.SafetySetting(
+                                    category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                                    threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                                ),
+                                types.SafetySetting(
+                                    category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                                    threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                                ),
+                            ]
+                        )
+                    )
+                else:
+                    raise primary_error
             stop_event.set()
             anim_thread.join()
 
@@ -304,7 +335,7 @@ def print_status(bot: HistoTechTutor):
     print(f"""
   {C.BOLD}─── Status Sesi ───────────────────────────────────{C.RESET}
   Domain aktif  : {color}{icon} {label}{C.RESET}
-  Model         : {C.CYAN}claude-3-5-sonnet-latest{C.RESET}
+  Model         : {C.CYAN}gemini-3.5-flash{C.RESET}
   Pesan terkirim: {C.BOLD}{bot.msg_count}{C.RESET}
   Durasi sesi   : {C.BOLD}{mins}m {secs}s{C.RESET}
   Memory (turns): {C.BOLD}{len(bot.history)}{C.RESET}
@@ -316,6 +347,10 @@ def print_status(bot: HistoTechTutor):
 #  MAIN LOOP
 # ─────────────────────────────────────────────
 def main():
+    # Force UTF-8 encoding on stdout to prevent UnicodeEncodeError on Windows
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+
     # ── Get API key ──────────────────────────
     api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key:
